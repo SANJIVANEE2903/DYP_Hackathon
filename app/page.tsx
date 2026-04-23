@@ -112,7 +112,7 @@ export default function LandingPage() {
       <Navbar />
 
       {/* ── HERO ── */}
-      <section className="max-w-7xl mx-auto px-6 pt-28 pb-20 text-center">
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 pt-20 pb-16 md:pt-28 md:pb-20 text-center">
         <div className="max-w-3xl mx-auto mb-16">
           <div className="inline-flex items-center gap-2 mb-8 animate-in fade-in slide-in-from-top-4 duration-700">
             <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#eff6ff] text-[#0070f3] text-xs font-bold border border-[#dbeafe] shadow-sm">
@@ -121,12 +121,12 @@ export default function LandingPage() {
             </span>
           </div>
 
-          <h1 className="text-5xl md:text-7xl font-bold tracking-tight text-[#0a0a0a] mb-8 leading-[1.05]">
+          <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold tracking-tight text-[#0a0a0a] mb-8 leading-[1.05]">
             GitHub repos,<br />
             <span className="text-[#0070f3]">standards automated.</span>
           </h1>
 
-          <p className="text-lg md:text-xl text-[#6b7280] mb-10 leading-relaxed max-w-2xl mx-auto">
+          <p className="text-base sm:text-lg md:text-xl text-[#6b7280] mb-10 leading-relaxed max-w-2xl mx-auto">
             RepoForge eliminates the manual toil of setting up new projects. We detect your stack and automatically configure everything from CI/CD to branch protection.
           </p>
 
@@ -160,7 +160,7 @@ export default function LandingPage() {
               </div>
               <span className="ml-4 text-[10px] font-bold text-[#4b5563] uppercase tracking-widest font-mono">repoforge — bash</span>
             </div>
-            <div className="p-8 font-mono text-sm sm:text-base text-left min-h-[300px]">
+            <div className="p-4 sm:p-8 font-mono text-sm sm:text-base text-left min-h-[250px] sm:min-h-[300px]">
               <div className="mb-6">
                 <span className="text-[#4ade80]">~</span> <span className="text-[#a5b4fc]">/dev/my-app</span>
                 {' '}$ <span className="text-white animate-pulse">repoforge init</span>
@@ -207,7 +207,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── HOW IT WORKS ── */}
-      <section id="features" className="max-w-7xl mx-auto px-6 py-32">
+      <section id="features" className="max-w-7xl mx-auto px-4 sm:px-6 py-16 sm:py-24 md:py-32">
         <div className="text-center mb-20">
           <Badge variant="info" className="mb-4">Workflow</Badge>
           <h2 className="text-4xl md:text-5xl font-bold text-[#0a0a0a] mb-6 tracking-tight">Three steps to consistency.</h2>
@@ -234,7 +234,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── FEATURES GRID ── */}
-      <section className="bg-[#0a0a0a] py-32 text-white">
+      <section className="bg-[#0a0a0a] py-16 sm:py-24 md:py-32 text-white">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-20">
             <h2 className="text-4xl md:text-5xl font-bold mb-6 tracking-tight">The developer standard.</h2>
@@ -256,7 +256,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── AUDIT PREVIEW ── */}
-      <section id="audit" className="max-w-7xl mx-auto px-6 py-32 overflow-hidden">
+      <section id="audit" className="max-w-7xl mx-auto px-4 sm:px-6 py-16 sm:py-24 md:py-32 overflow-hidden">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-20 items-center">
           <div className="relative">
              <Badge variant="warning" className="mb-4">Health Auditor</Badge>
@@ -346,7 +346,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── PRICING ── */}
-      <section id="pricing" className="bg-[#fafafa] py-32 border-y border-[#e5e7eb]">
+      <section id="pricing" className="bg-[#fafafa] py-16 sm:py-24 md:py-32 border-y border-[#e5e7eb]">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-20">
             <h2 className="text-4xl md:text-5xl font-bold text-[#0a0a0a] mb-6 tracking-tight">Start simple. Scale fast.</h2>
@@ -415,7 +415,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── CTA SECTION ── */}
-      <section className="bg-[#0070f3] py-24 text-white text-center rounded-3xl mx-6 my-20">
+      <section className="bg-[#0070f3] py-12 sm:py-24 text-white text-center rounded-2xl sm:rounded-3xl mx-4 sm:mx-6 my-10 sm:my-20">
         <div className="max-w-2xl mx-auto px-6">
           <h2 className="text-4xl font-bold mb-6 tracking-tight">Ready to standardize?</h2>
           <p className="text-white/80 text-xl mb-10">Join 10,000+ developers automating their repository standards with RepoForge.</p>

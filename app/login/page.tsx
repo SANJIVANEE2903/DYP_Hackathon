@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useSupabase } from '@/components/providers/supabase-provider'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -8,15 +8,23 @@ import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 
-export default function LoginPage() {
+function LoginContent() {
   const { supabase } = useSupabase()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isGitHubLoading, setIsGitHubLoading] = useState(false)
+
+  useEffect(() => {
+    const error = searchParams.get('error')
+    if (error) {
+      toast.error(error)
+    }
+  }, [searchParams])
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -42,6 +50,7 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'github',
       options: {
+        scopes: 'repo read:org workflow',
         redirectTo: `${window.location.origin}/auth/callback`,
       },
     })
@@ -150,5 +159,13 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-[#fafafa]">Loading...</div>}>
+      <LoginContent />
+    </Suspense>
   )
 }

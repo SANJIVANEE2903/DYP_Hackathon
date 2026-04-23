@@ -2,8 +2,13 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useSupabase } from '@/components/providers/supabase-provider';
+import { api } from '@/lib/supabase/api';
+import { toast } from 'sonner';
+import { getRepos, getDashboardStats, connectRepo } from '@/lib/supabase/api'
 
 const STACKS = ['Node.js', 'Python', 'Go', 'Java', 'React Native', 'Rust'] as const;
+// ... (previous constants remain the same)
 const PRESETS = [
   { id: 'minimal', name: 'Minimal', description: 'Basic rules with essential protections only', features: ['Branch protection', 'License file'] },
   { id: 'standard', name: 'Standard', description: 'Recommended for most teams and open-source projects', features: ['Branch protection', 'CI/CD workflows', 'Issue templates', 'Code review required'] },
@@ -61,10 +66,12 @@ function Confetti() {
 }
 
 export default function OnboardingPage() {
+  const { user } = useSupabase();
   const [step, setStep] = useState(1);
   const [selectedStacks, setSelectedStacks] = useState<string[]>([]);
   const [selectedPreset, setSelectedPreset] = useState('');
   const [repoName, setRepoName] = useState('');
+  const [isInitializing, setIsInitializing] = useState(false);
 
   const handleStackToggle = (stack: string) => {
     setSelectedStacks(prev =>
@@ -72,10 +79,27 @@ export default function OnboardingPage() {
     );
   };
 
+  const handleInitialize = async () => {
+    if (!user) return;
+    setIsInitializing(true);
+    try {
+      const org = user.user_metadata?.user_name ?? user.email?.split('@')[0] ?? 'personal';
+      await connectRepo(`${org}/${repoName}`);
+      toast.success('Repository initialized successfully!');
+      setStep(5);
+    } catch (error: any) {
+      console.error('Initialization error:', error);
+      toast.error('Failed to initialize repository: ' + (error.message || 'Unknown error'));
+    } finally {
+      setIsInitializing(false);
+    }
+  };
+
   const canProceed = () => {
+    if (step === 1) return !!user;
     if (step === 2) return selectedStacks.length > 0;
     if (step === 3) return selectedPreset !== '';
-    if (step === 4) return repoName.trim() !== '';
+    if (step === 4) return repoName.trim() !== '' && !isInitializing;
     return true;
   };
 
@@ -83,7 +107,7 @@ export default function OnboardingPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      {/* Top bar */}
+      {/* ... (previous navbar code) */}
       <div className="border-b border-[#e5e7eb] px-6 h-14 flex items-center">
         <Link href="/" className="flex items-center gap-2 font-semibold text-[#0a0a0a] text-sm">
           <div className="w-6 h-6 bg-[#0070f3] rounded grid grid-cols-2 gap-px p-1 shrink-0">
@@ -105,11 +129,10 @@ export default function OnboardingPage() {
             const isDone = s < step;
             return (
               <div key={s} className="flex items-center gap-2 shrink-0">
-                <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                  isActive ? 'bg-[#0070f3] text-white'
+                <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-colors ${isActive ? 'bg-[#0070f3] text-white'
                   : isDone ? 'bg-[#dcfce7] text-[#166534]'
-                  : 'bg-[#f3f4f6] text-[#9ca3af]'
-                }`}>
+                    : 'bg-[#f3f4f6] text-[#9ca3af]'
+                  }`}>
                   {isDone ? (
                     <svg width="10" height="10" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
@@ -130,22 +153,43 @@ export default function OnboardingPage() {
         {/* ── Step 1: Connect GitHub ── */}
         {step === 1 && (
           <div className="bg-white border border-[#e5e7eb] rounded-xl p-8 text-center">
-            <div className="w-14 h-14 bg-[#f3f4f6] rounded-full flex items-center justify-center mx-auto mb-5">
-              <svg className="w-7 h-7 text-[#0a0a0a]" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.343-3.369-1.343-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.544 2.914 1.19.092-.926.35-1.546.636-1.9-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0110 4.817a9.56 9.56 0 012.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C17.138 18.193 20 14.441 20 10.017 20 4.484 15.522 0 10 0z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <h1 className="text-2xl font-semibold text-[#0a0a0a] mb-2">Connect your GitHub account</h1>
-            <p className="text-[#6b7280] mb-8 text-sm">We need read/write access to configure your repositories</p>
-            <button
-              onClick={() => setStep(2)}
-              className="w-full px-6 py-3 bg-[#0a0a0a] text-white rounded-lg hover:bg-[#1a1a1a] transition-colors font-medium inline-flex items-center justify-center gap-2.5"
-            >
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.343-3.369-1.343-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.544 2.914 1.19.092-.926.35-1.546.636-1.9-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0110 4.817a9.56 9.56 0 012.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C17.138 18.193 20 14.441 20 10.017 20 4.484 15.522 0 10 0z" clipRule="evenodd" />
-              </svg>
-              Continue with GitHub
-            </button>
+            {user ? (
+              <>
+                <div className="w-16 h-16 bg-[#eff6ff] rounded-full flex items-center justify-center mx-auto mb-5">
+                  <img
+                    src={user.user_metadata?.avatar_url ?? `https://avatar.vercel.sh/${user.email}`}
+                    alt="Avatar"
+                    className="w-full h-full rounded-full border-2 border-white shadow-sm"
+                  />
+                </div>
+                <h1 className="text-2xl font-semibold text-[#0a0a0a] mb-2">GitHub Connected</h1>
+                <p className="text-[#6b7280] mb-8 text-sm">
+                  Authenticated as <strong className="text-[#0a0a0a]">{user.user_metadata?.full_name ?? user.email}</strong>
+                </p>
+                <button
+                  onClick={() => setStep(2)}
+                  className="w-full px-6 py-3 bg-[#0a0a0a] text-white rounded-lg hover:bg-[#1a1a1a] transition-colors font-medium inline-flex items-center justify-center gap-2.5"
+                >
+                  Continue setup →
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="w-14 h-14 bg-[#f3f4f6] rounded-full flex items-center justify-center mx-auto mb-5">
+                  <svg className="w-7 h-7 text-[#0a0a0a]" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.343-3.369-1.343-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.544 2.914 1.19.092-.926.35-1.546.636-1.9-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0110 4.817a9.56 9.56 0 012.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C17.138 18.193 20 14.441 20 10.017 20 4.484 15.522 0 10 0z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <h1 className="text-2xl font-semibold text-[#0a0a0a] mb-2">Connect your GitHub account</h1>
+                <p className="text-[#6b7280] mb-8 text-sm">We need read/write access to configure your repositories</p>
+                <Link
+                  href="/login"
+                  className="w-full px-6 py-3 bg-[#0a0a0a] text-white rounded-lg hover:bg-[#1a1a1a] transition-colors font-medium inline-flex items-center justify-center gap-2.5"
+                >
+                  Sign in to continue
+                </Link>
+              </>
+            )}
             <p className="text-xs text-[#9ca3af] mt-3">
               We only access repositories you explicitly grant
             </p>
@@ -166,11 +210,10 @@ export default function OnboardingPage() {
                   <button
                     key={stack}
                     onClick={() => handleStackToggle(stack)}
-                    className={`p-4 rounded-xl border-2 text-left transition-all ${
-                      selected
-                        ? 'border-[#0070f3] bg-[#eff6ff]'
-                        : 'border-[#e5e7eb] bg-white hover:border-[#d1d5db]'
-                    }`}
+                    className={`p-4 rounded-xl border-2 text-left transition-all ${selected
+                      ? 'border-[#0070f3] bg-[#eff6ff]'
+                      : 'border-[#e5e7eb] bg-white hover:border-[#d1d5db]'
+                      }`}
                   >
                     <div className="text-2xl mb-2">{STACK_ICONS[stack]}</div>
                     <div className="text-sm font-medium text-[#0a0a0a]">{stack}</div>
@@ -195,9 +238,8 @@ export default function OnboardingPage() {
                   <button
                     key={preset.id}
                     onClick={() => setSelectedPreset(preset.id)}
-                    className={`w-full p-5 rounded-xl border-2 text-left transition-all ${
-                      selected ? 'border-[#0070f3] bg-[#eff6ff]' : 'border-[#e5e7eb] bg-white hover:border-[#d1d5db]'
-                    }`}
+                    className={`w-full p-5 rounded-xl border-2 text-left transition-all ${selected ? 'border-[#0070f3] bg-[#eff6ff]' : 'border-[#e5e7eb] bg-white hover:border-[#d1d5db]'
+                      }`}
                   >
                     <div className="flex items-center justify-between mb-1">
                       <h3 className="font-semibold text-[#0a0a0a]">{preset.name}</h3>
@@ -230,7 +272,9 @@ export default function OnboardingPage() {
             <div className="bg-white border border-[#e5e7eb] rounded-xl p-6">
               <label className="block text-sm font-medium text-[#0a0a0a] mb-1.5">Repository name</label>
               <div className="flex items-center gap-2 mb-4">
-                <span className="text-sm text-[#6b7280] shrink-0">acmecorp /</span>
+                <span className="text-sm text-[#6b7280] shrink-0">
+                  {user?.user_metadata?.user_name ?? user?.email?.split('@')[0] ?? 'owner'} /
+                </span>
                 <input
                   type="text"
                   value={repoName}
@@ -270,18 +314,18 @@ export default function OnboardingPage() {
               </div>
               <h1 className="text-2xl font-semibold text-[#0a0a0a] mb-2">You&apos;re all set!</h1>
               <p className="text-[#6b7280] mb-2 text-sm">
-                <strong className="text-[#0a0a0a]">acmecorp/{repoName || 'my-project'}</strong> is configured and ready.
+                <strong className="text-[#0a0a0a]">{user?.user_metadata?.user_name ?? user?.email?.split('@')[0] ?? 'user'}/{repoName || 'my-project'}</strong> is configured and ready.
               </p>
               <p className="text-xs text-[#9ca3af] mb-6">
                 CI/CD workflows, branch protection, and templates are all enabled.
               </p>
               <a
-                href={`https://github.com/acmecorp/${repoName || 'my-project'}`}
+                href={`https://github.com/${user?.user_metadata?.user_name ?? 'user'}/${repoName || 'my-project'}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-sm text-[#0070f3] hover:text-[#0060df] inline-flex items-center gap-1 mb-6"
               >
-                github.com/acmecorp/{repoName || 'my-project'} ↗
+                github.com/{user?.user_metadata?.user_name ?? 'user'}/{repoName || 'my-project'} ↗
               </a>
               <div className="pt-4">
                 <Link
@@ -301,17 +345,26 @@ export default function OnboardingPage() {
             {step > 1 && (
               <button
                 onClick={() => setStep(step - 1)}
+                disabled={isInitializing}
                 className="flex-1 px-4 py-2.5 border border-[#e5e7eb] text-[#374151] rounded-lg hover:bg-[#f9fafb] transition-colors font-medium text-sm"
               >
                 ← Back
               </button>
             )}
             <button
-              onClick={() => setStep(step + 1)}
+              onClick={() => step === 4 ? handleInitialize() : setStep(step + 1)}
               disabled={!canProceed()}
               className="flex-1 px-4 py-2.5 bg-[#0070f3] text-white rounded-lg hover:bg-[#0060df] disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium text-sm"
             >
-              {step === 4 ? 'Initialize →' : 'Next →'}
+              {isInitializing ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Initializing...
+                </span>
+              ) : step === 4 ? 'Initialize →' : 'Next →'}
             </button>
           </div>
         )}

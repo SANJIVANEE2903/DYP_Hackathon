@@ -24,15 +24,32 @@ export default function SupabaseProvider({
   const router = useRouter()
 
   useEffect(() => {
+    // On mount: check current session immediately to capture provider_token.
+    // With @supabase/ssr, onAuthStateChange may not replay SIGNED_IN
+    // after a cookie-based restore, so we proactively pull the token here.
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.provider_token) {
+        localStorage.setItem('github_access_token', session.provider_token)
+      }
+      setUser(session?.user ?? null)
+      setIsLoading(false)
+    })
+
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
+      // Also capture on live auth events (fresh sign-in)
+      if (session?.provider_token) {
+        localStorage.setItem('github_access_token', session.provider_token)
+      }
+
       setUser(session?.user ?? null)
       setIsLoading(false)
-      
+
       if (event === 'SIGNED_IN') router.refresh()
       if (event === 'SIGNED_OUT') {
         setUser(null)
+        localStorage.removeItem('github_access_token')
         router.push('/')
         router.refresh()
       }

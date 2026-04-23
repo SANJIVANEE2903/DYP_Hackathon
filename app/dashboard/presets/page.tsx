@@ -1,24 +1,44 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { DashboardShell } from '@/components/layout/dashboard-shell';
 import { PresetForm } from '@/components/presets/preset-form';
-import { MOCK_PRESETS } from '@/lib/mock-data';
+import { getPresets } from '@/lib/supabase/api';
 import { Preset, PresetSettings } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { toast } from 'sonner';
 
 export default function PresetsPage() {
-  const [presets, setPresets] = useState<Preset[]>(MOCK_PRESETS);
+  const [presets, setPresets] = useState<Preset[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingPreset, setEditingPreset] = useState<Preset | undefined>(undefined);
 
-  const handleSave = (data: { name: string; settings: PresetSettings }) => {
+  useEffect(() => {
+    async function fetchPresets() {
+      try {
+        const data = await getPresets();
+        setPresets(data as unknown as Preset[]);
+      } catch (error: any) {
+        console.error('Failed to fetch presets:', error);
+        toast.error('Failed to load presets');
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchPresets();
+  }, []);
+
+  const handleSave = async (data: { name: string; settings: PresetSettings }) => {
+    // In a real implementation, we would call an API to save/update in Supabase
+    // For now, we update local state to reflect successful "simulated" save
     if (editingPreset) {
       setPresets(prev => prev.map(p =>
         p.id === editingPreset.id ? { ...p, ...data, lastModified: 'just now' } : p
       ));
+      toast.success('Preset updated successfully');
     } else {
       const newPreset: Preset = {
         id: String(Date.now()),
@@ -26,7 +46,8 @@ export default function PresetsPage() {
         lastModified: 'just now',
         ...data,
       };
-      setPresets(prev => [...prev, newPreset]);
+      setPresets(prev => [newPreset, ...prev]);
+      toast.success('Preset created successfully');
     }
     setShowForm(false);
     setEditingPreset(undefined);
@@ -40,6 +61,7 @@ export default function PresetsPage() {
   const handleDelete = (id: string) => {
     if (confirm('Are you sure you want to delete this preset?')) {
       setPresets(prev => prev.filter(p => p.id !== id));
+      toast.success('Preset deleted');
     }
   };
 
@@ -71,7 +93,11 @@ export default function PresetsPage() {
 
         <div className="p-8 space-y-4">
           {/* Presets list */}
-          {presets.length === 0 && !showForm ? (
+          {isLoading ? (
+            <Card className="p-12 text-center text-[#6b7280] animate-pulse">
+              Loading presets...
+            </Card>
+          ) : presets.length === 0 && !showForm ? (
             <Card className="p-12 text-center bg-white border-dashed border-2">
               <div className="w-12 h-12 bg-[#f3f4f6] rounded-xl flex items-center justify-center mx-auto mb-4">
                 <svg width="20" height="20" fill="none" stroke="#9ca3af" strokeWidth="2" viewBox="0 0 24 24">
@@ -135,7 +161,7 @@ export default function PresetsPage() {
                   </div>
 
                   {/* Stack tags */}
-                  {preset.settings.stacks.length > 0 && (
+                  {preset.settings?.stacks?.length > 0 && (
                     <div className="flex items-center gap-2 mt-4 pt-4 border-t border-[#f3f4f6]">
                       <span className="text-[10px] font-medium text-[#9ca3af] uppercase tracking-wider">Targets:</span>
                       <div className="flex flex-wrap gap-1.5">
@@ -152,7 +178,6 @@ export default function PresetsPage() {
             </div>
           )}
 
-          {/* Form Modal/Overlay logic could go here, for now it's just appended */}
           {showForm && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0a0a0a]/20 backdrop-blur-sm animate-in fade-in duration-200">
               <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl overflow-hidden animate-in zoom-in-95 duration-200">

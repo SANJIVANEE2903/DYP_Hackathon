@@ -2,7 +2,9 @@ import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
+import 'lenis/dist/lenis.css'
 import SupabaseProvider from '@/components/providers/supabase-provider'
+import { LenisProvider } from '@/components/providers/lenis-provider'
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -34,9 +36,11 @@ export default function RootLayout({
   return (
     <html lang="en" className="bg-[#ffffff]">
       <body className={`${inter.className} font-sans antialiased bg-[#ffffff] text-[#0a0a0a]`}>
-        <SupabaseProvider>
-          {children}
-        </SupabaseProvider>
+        <LenisProvider>
+          <SupabaseProvider>
+            {children}
+          </SupabaseProvider>
+        </LenisProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>

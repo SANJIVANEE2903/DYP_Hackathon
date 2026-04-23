@@ -1,24 +1,43 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { DashboardShell } from '@/components/layout/dashboard-shell';
 import { RepoCard } from '@/components/repos/repo-card';
-import { MOCK_REPOS } from '@/lib/mock-data';
+import { getRepos } from '@/lib/supabase/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Repository } from '@/types';
+import { toast } from 'sonner';
 
 export default function RepositoriesPage() {
+  const [repos, setRepos] = useState<Repository[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<string>('all');
 
-  const filteredRepos = MOCK_REPOS.filter(repo => {
+  useEffect(() => {
+    async function fetchRepos() {
+      try {
+        const data = await getRepos();
+        setRepos(data as unknown as Repository[]);
+      } catch (error: any) {
+        console.error('Failed to fetch repos:', error);
+        toast.error('Failed to load repositories');
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchRepos();
+  }, []);
+
+  const filteredRepos = repos.filter(repo => {
     const matchesSearch = repo.name.toLowerCase().includes(search.toLowerCase()) || 
                           repo.org.toLowerCase().includes(search.toLowerCase());
     const matchesFilter = filter === 'all' || repo.stack === filter;
     return matchesSearch && matchesFilter;
   });
 
-  const stacks = ['all', ...Array.from(new Set(MOCK_REPOS.map(r => r.stack)))];
+  const stacks = ['all', ...Array.from(new Set(repos.map(r => r.stack)))];
 
   return (
     <DashboardShell>
@@ -29,8 +48,8 @@ export default function RepositoriesPage() {
             <h1 className="text-2xl font-semibold text-[#0a0a0a]">Repositories</h1>
             <p className="text-sm text-[#6b7280] mt-0.5">Manage and monitor health across your organization.</p>
           </div>
-          <Button>
-            Connect repo
+          <Button asChild>
+            <a href="/onboarding">Connect repo</a>
           </Button>
         </div>
 
@@ -70,7 +89,11 @@ export default function RepositoriesPage() {
           </div>
 
           {/* Repos grid */}
-          {filteredRepos.length > 0 ? (
+          {isLoading ? (
+            <div className="p-12 text-center text-[#6b7280] animate-pulse">
+              Loading repositories...
+            </div>
+          ) : filteredRepos.length > 0 ? (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {filteredRepos.map((repo) => (
                 <RepoCard key={repo.id} repo={repo} />
@@ -85,8 +108,8 @@ export default function RepositoriesPage() {
               </div>
               <h3 className="text-xl font-semibold text-[#0a0a0a] mb-2">No repositories connected yet</h3>
               <p className="text-[#6b7280] mb-8 leading-relaxed">Connect your first GitHub repository to get started with RepoForge configuration and health monitoring.</p>
-              <Button className="px-8 h-11">
-                Connect repository
+              <Button className="px-8 h-11" asChild>
+                <a href="/onboarding">Connect repository</a>
               </Button>
             </div>
           )}

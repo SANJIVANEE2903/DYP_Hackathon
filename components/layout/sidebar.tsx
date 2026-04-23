@@ -2,6 +2,8 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useSupabase } from '@/components/providers/supabase-provider'
+import { Button } from '@/components/ui/button'
 
 function cn(...classes: (string | boolean | undefined)[]) {
   return classes.filter(Boolean).join(' ')
@@ -65,10 +67,15 @@ const navigation = [
 
 export function Sidebar() {
   const pathname = usePathname()
+  const { supabase, user } = useSupabase()
 
   const isActive = (href: string) => {
     if (href === '/dashboard') return pathname === '/dashboard'
     return pathname.startsWith(href)
+  }
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
   }
 
   return (
@@ -111,19 +118,31 @@ export function Sidebar() {
       </nav>
 
       {/* User profile */}
-      <div className="p-3 border-t border-[#e5e7eb]">
-        <div className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-[#f9fafb] transition-colors cursor-pointer">
-          <div className="w-7 h-7 rounded-full bg-[#0070f3] flex items-center justify-center text-white text-xs font-semibold shrink-0">
-            A
+      <div className="p-3 border-t border-[#e5e7eb] space-y-2">
+        <div className="flex items-center gap-3 px-3 py-2 rounded-md transition-colors">
+          <div className="w-8 h-8 rounded-full bg-[#0070f3] flex items-center justify-center text-white text-xs font-semibold shrink-0">
+            {user?.email?.[0].toUpperCase() ?? 'U'}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-[#0a0a0a] truncate">Arjun Sharma</p>
-            <p className="text-xs text-[#9ca3af] truncate">arjun@acmecorp.com</p>
+            <p className="text-sm font-medium text-[#0a0a0a] truncate">
+              {user?.user_metadata?.full_name ?? user?.email?.split('@')[0] ?? 'User'}
+            </p>
+            <p className="text-xs text-[#9ca3af] truncate">{user?.email}</p>
           </div>
-          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-[#dbeafe] text-[#1d4ed8] shrink-0">
-            Pro
-          </span>
         </div>
+        
+        <Button 
+          variant="ghost" 
+          className="w-full h-9 justify-start gap-3 px-3 text-[#ef4444] hover:text-[#ef4444] hover:bg-[#fee2e2]"
+          onClick={handleLogout}
+        >
+          <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <polyline points="16 17 21 12 16 7" />
+            <line x1="21" y1="12" x2="9" y2="12" />
+          </svg>
+          Sign out
+        </Button>
       </div>
     </div>
   )
