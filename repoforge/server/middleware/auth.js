@@ -15,6 +15,19 @@ async function requireAuth(req, res, next) {
 
     const token = authHeader.split(' ')[1]
     
+    // Support Guest Mode for Development
+    if (token === 'guest-token') {
+      req.user = {
+        userId: 'guest-user-id',
+        githubLogin: 'repoforge-admin',
+        githubAccessToken: '',
+        email: 'admin@repoforge.io',
+        avatarUrl: 'https://github.com/identicons/guest.png',
+        githubConnected: true
+      }
+      return next()
+    }
+
     // Use getUser to verify the token with Supabase
     const { data: { user }, error } = await supabase.auth.getUser(token)
 

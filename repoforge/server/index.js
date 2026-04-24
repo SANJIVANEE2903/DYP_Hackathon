@@ -19,7 +19,7 @@ app.use(helmet({
   contentSecurityPolicy: false, // Disable CSP for local development to avoid blocking localhost:3001
 }));
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: true, // Allow any origin in development
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization', 'X-GitHub-Token']
 }));

@@ -12,8 +12,12 @@ api.interceptors.request.use(
   (config) => {
     if (typeof window !== 'undefined') {
       const token = localStorage.getItem('repoforge_token');
+      const isGuest = localStorage.getItem('repoforge_guest') === 'true';
+      
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
+      } else if (isGuest) {
+        config.headers.Authorization = `Bearer guest-token`;
       }
     }
     return config;

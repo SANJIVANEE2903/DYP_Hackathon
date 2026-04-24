@@ -37,6 +37,21 @@ export function AuthForm({ type, onSubmit, isSubmitting, error, success }: AuthF
     });
   };
 
+  const handleForgotPassword = async () => {
+    if (!email) {
+      alert("Please enter your email address first.");
+      return;
+    }
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    if (error) {
+      alert(error.message);
+    } else {
+      alert("Password reset email sent!");
+    }
+  };
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {type === 'signup' && (
@@ -120,7 +135,11 @@ export function AuthForm({ type, onSubmit, isSubmitting, error, success }: AuthF
 
       <div className="flex items-center justify-between px-1">
         {type === 'login' && (
-          <button type="button" className="text-xs font-bold text-primary hover:underline transition-all">
+          <button 
+            type="button" 
+            onClick={handleForgotPassword}
+            className="text-xs font-bold text-primary hover:underline transition-all"
+          >
             Forgot Password?
           </button>
         )}
