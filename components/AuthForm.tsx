@@ -32,7 +32,7 @@ export function AuthForm({ type, onSubmit, isSubmitting, error, success }: AuthF
     await supabase.auth.signInWithOAuth({
       provider: 'github',
       options: {
-        redirectTo: `${window.location.origin}/dashboard`
+        redirectTo: `${window.location.origin}/auth/callback?next=/dashboard`
       }
     });
   };

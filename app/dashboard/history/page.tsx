@@ -22,7 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import api from '@/lib/api';
+import { createClient } from '@/lib/supabase/client';
 import { format } from 'date-fns';
 import Link from 'next/link';
 
@@ -41,19 +41,36 @@ export default function HistoryPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
+  const supabase = createClient();
+
   useEffect(() => {
     const fetchHistory = async () => {
       try {
-        // Fetching real history from the new history endpoint
-        const res = await api.get('/history');
-        const runs = res.data || [];
+        const { data, error } = await supabase
+          .from('audit_runs')
+          .select(`
+            id,
+            score,
+            status,
+            results,
+            created_at,
+            repo_id,
+            repositories (
+              name
+            )
+          `)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        const runs = data || [];
         
         const transformedHistory: HistoryItem[] = runs.map((run: any) => ({
-          id: run.id,
-          repo_name: run.repo?.name || 'Unknown Repository',
+          id: run.repo_id, // Link to the repo, or the audit run id. The dashboard/audit takes repoId, so use repo_id here
+          repo_name: run.repositories?.name || 'Unknown Repository',
           action_type: 'Security Audit',
-          status: 'completed',
-          details: run.summary || `Health analysis completed with score of ${run.score || 0}%`,
+          status: run.status || 'completed',
+          details: run.results?.summary || `Health analysis completed with score of ${run.score || 0}%`,
           created_at: run.created_at,
           score: run.score || 0
         }));

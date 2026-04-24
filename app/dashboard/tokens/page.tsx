@@ -52,7 +52,17 @@ export default function GitHubTokenPage() {
     setIsSaving(true);
     
     try {
-      await api.post('/tokens/github', { token: ghToken });
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData?.user?.id;
+      if (!userId) throw new Error("Not authenticated");
+
+      const { error } = await supabase.from('presets').insert({
+        name: 'github_token',
+        settings: { token: ghToken },
+        user_id: userId
+      });
+      
+      if (error) throw error;
       
       toast({
         title: "GitHub Token Configured",

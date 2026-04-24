@@ -49,7 +49,7 @@ import {
   SelectValue 
 } from '@/components/ui/select';
 import { useToast } from '@/components/ui/use-toast';
-import api from '@/lib/api';
+import { createClient } from '@/lib/supabase/client';
 import { format } from 'date-fns';
 import Link from 'next/link';
 
@@ -76,11 +76,24 @@ export default function RepositoriesPage() {
   const [repoFullName, setRepoFullName] = useState('');
   const [connecting, setConnecting] = useState(false);
   const { toast } = useToast();
+  
+  const supabase = createClient();
 
   const fetchRepos = async () => {
     try {
-      const res = await api.get('/repos');
-      setRepos(res.data);
+      const { data, error } = await supabase.from('repositories').select('*').order('updated_at', { ascending: false });
+      if (error) throw error;
+      
+      const formatted = (data || []).map(r => ({
+        id: r.id,
+        name: r.name,
+        full_name: `${r.org}/${r.name}`,
+        stack: r.stack,
+        health_score: r.score,
+        updated_at: r.updated_at,
+        is_private: r.is_private || false
+      }));
+      setRepos(formatted);
     } catch (err) {
       console.error('Failed to fetch repos:', err);
     } finally {
@@ -107,13 +120,26 @@ export default function RepositoriesPage() {
 
     setConnecting(true);
     try {
-      await api.post('/repos/connect', { repoFullName: cleanRepoName });
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData?.user?.id;
+      if (!userId) throw new Error("Not authenticated");
+
+      const parts = cleanRepoName.split('/');
+      const { error } = await supabase.from('repositories').insert({
+        name: parts[1],
+        org: parts[0],
+        stack: 'TypeScript',
+        score: null,
+        user_id: userId
+      });
+      if (error) throw error;
+
       toast({ title: "Connected!", description: `Successfully connected ${cleanRepoName}.` });
       setRepoFullName('');
       setIsConnectOpen(false);
       fetchRepos();
     } catch (err: any) {
-      toast({ title: "Connection Failed", description: err.response?.data?.error || "Failed to connect.", variant: "destructive" });
+      toast({ title: "Connection Failed", description: err.message || "Failed to connect.", variant: "destructive" });
     } finally {
       setConnecting(false);
     }
@@ -121,7 +147,8 @@ export default function RepositoriesPage() {
 
   const handleDelete = async (id: string) => {
     try {
-      await api.delete(`/repos/${id}`);
+      const { error } = await supabase.from('repositories').delete().eq('id', id);
+      if (error) throw error;
       setRepos(repos.filter(r => r.id !== id));
       toast({ title: "Disconnected", description: "Repository removed." });
     } catch (err) {
@@ -319,9 +346,9 @@ export default function RepositoriesPage() {
                     <div className="flex items-center justify-between text-xs mb-1">
                       <span className="font-black text-muted-foreground uppercase tracking-[0.2em]">Health Integrity</span>
                       <span className={`font-black text-lg ${
-                        (repo.health_score || 0) >= 80 ? 'text-emerald-500' : (repo.health_score || 0) >= 60 ? 'text-amber-500' : 'text-destructive'
+                        repo.health_score === null ? 'text-muted-foreground' : repo.health_score >= 80 ? 'text-emerald-500' : repo.health_score >= 60 ? 'text-amber-500' : 'text-destructive'
                       }`}>
-                        {repo.health_score || 0}%
+                        {repo.health_score === null ? 'Pending' : `${repo.health_score}%`}
                       </span>
                     </div>
                     <div className="w-full h-3 bg-secondary rounded-full overflow-hidden shadow-inner">
@@ -330,8 +357,9 @@ export default function RepositoriesPage() {
                         animate={{ width: `${repo.health_score || 0}%` }}
                         transition={{ duration: 1, ease: "easeOut" }}
                         className={`h-full rounded-full shadow-lg ${
-                          (repo.health_score || 0) >= 80 ? 'bg-gradient-to-r from-emerald-400 to-emerald-600' : 
-                          (repo.health_score || 0) >= 60 ? 'bg-gradient-to-r from-amber-400 to-amber-600' : 
+                          repo.health_score === null ? 'bg-muted-foreground/30' : 
+                          repo.health_score >= 80 ? 'bg-gradient-to-r from-emerald-400 to-emerald-600' : 
+                          repo.health_score >= 60 ? 'bg-gradient-to-r from-amber-400 to-amber-600' : 
                           'bg-gradient-to-r from-destructive to-red-600'
                         }`}
                       />

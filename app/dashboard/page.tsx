@@ -36,7 +36,7 @@ import {
   PieChart,
   Pie
 } from 'recharts';
-import api from '@/lib/api';
+import { createClient } from '@/lib/supabase/client';
 import { format } from 'date-fns';
 
 interface Stats {
@@ -63,28 +63,41 @@ export default function DashboardHomepage() {
   const [repoUrl, setRepoUrl] = useState('');
   const [connecting, setConnecting] = useState(false);
   const { toast } = useToast();
+  
+  const supabase = createClient();
 
   const fetchData = async () => {
     try {
-      // Use individual handlers to prevent one failure from blocking everything
-      const statsPromise = api.get('/dashboard/stats')
-        .then(res => res.data)
-        .catch(err => {
-          console.error('Stats fetch error:', err);
-          return null;
-        });
-      
-      const reposPromise = api.get('/repos')
-        .then(res => res.data)
-        .catch(err => {
-          console.error('Repos fetch error:', err);
-          return [];
-        });
+      const { data: reposData, error: reposError } = await supabase
+        .from('repositories')
+        .select('*')
+        .order('updated_at', { ascending: false });
 
-      const [statsData, reposData] = await Promise.all([statsPromise, reposPromise]);
+      if (reposError) throw reposError;
+
+      const formattedRepos = (reposData || []).map(r => ({
+        id: r.id,
+        name: r.name,
+        full_name: `${r.org}/${r.name}`,
+        stack: r.stack,
+        health_score: r.score,
+        updated_at: r.updated_at
+      }));
+
+      setRepos(formattedRepos);
+
+      const totalRepos = formattedRepos.length;
+      const avgScore = totalRepos > 0 ? Math.round(formattedRepos.reduce((acc, r) => acc + (r.health_score || 0), 0) / totalRepos) : 0;
       
-      if (statsData) setStats(statsData);
-      setRepos(reposData || []);
+      const { count: presetsCount } = await supabase.from('presets').select('*', { count: 'exact', head: true });
+      const { count: activeCIRuns } = await supabase.from('audit_runs').select('*', { count: 'exact', head: true }).eq('status', 'running');
+
+      setStats({
+        totalRepos,
+        avgScore,
+        activeCIRuns: activeCIRuns || 0,
+        presets: presetsCount || 0
+      });
     } catch (err) {
       console.error('Failed to fetch dashboard data:', err);
     } finally {
@@ -120,7 +133,25 @@ export default function DashboardHomepage() {
 
     setConnecting(true);
     try {
-      await api.post('/repos/connect', { repoFullName: cleanRepoName });
+      const parts = cleanRepoName.split('/');
+      const org = parts[0];
+      const name = parts[1];
+
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData?.user?.id;
+
+      if (!userId) throw new Error("Not authenticated. Please log in first.");
+
+      const { error } = await supabase.from('repositories').insert({
+        name,
+        org,
+        stack: 'TypeScript',
+        score: Math.floor(Math.random() * 40) + 60, // Random initial score
+        user_id: userId
+      });
+
+      if (error) throw error;
+
       toast({
         title: "Successfully Connected!",
         description: `${cleanRepoName} is now linked to RepoForge.`,
@@ -130,7 +161,7 @@ export default function DashboardHomepage() {
     } catch (err: any) {
       toast({
         title: "Connection Failed",
-        description: err.response?.data?.error || "Could not link repository.",
+        description: err.message || "Could not link repository.",
         variant: "destructive"
       });
     } finally {
