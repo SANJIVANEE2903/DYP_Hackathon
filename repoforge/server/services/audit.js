@@ -305,7 +305,7 @@ async function runAudit(repoData, gh) {
     checks,
     issues,
     passed,
-    passedChecks: passedCount,
+    passedChecks: passed.map(c => c.name),
     top_priorities,
     category_scores: categoryScores,
     // Repo metadata

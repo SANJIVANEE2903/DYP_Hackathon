@@ -1,198 +1,184 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { DashboardShell } from '@/components/layout/dashboard-shell';
-import { PresetForm } from '@/components/presets/preset-form';
-import { getPresets } from '@/lib/supabase/api';
-import { Preset, PresetSettings } from '@/types';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { motion } from 'framer-motion';
+import { 
+  Layers, 
+  Plus, 
+  Search,
+  Sparkles,
+  Loader2
+} from 'lucide-react';
+import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { toast } from 'sonner';
+import { Input } from '@/components/ui/input';
+import api from '@/lib/api';
+import { useToast } from '@/components/ui/use-toast';
+
+interface Preset {
+  id: string;
+  name: string;
+  description: string;
+  tags: string[];
+  active?: boolean;
+}
 
 export default function PresetsPage() {
   const [presets, setPresets] = useState<Preset[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [editingPreset, setEditingPreset] = useState<Preset | undefined>(undefined);
+  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
+
+  const defaultPresets = useMemo<Preset[]>(() => [
+    {
+      id: '1',
+      name: 'Production Ready Node.js',
+      description: 'Security headers, CI/CD with GitHub Actions, and branch protection.',
+      tags: ['Security', 'CI/CD'],
+      active: true
+    },
+    {
+      id: '2',
+      name: 'Open Source Starter',
+      description: 'LICENSE, README template, CONTRIBUTING guide, and issue templates.',
+      tags: ['Docs', 'OSS'],
+      active: false
+    },
+    {
+      id: '3',
+      name: 'Strict Security Audit',
+      description: 'Advanced dependency scanning, secret detection, and lockfile validation.',
+      tags: ['Security'],
+      active: false
+    }
+  ], []);
+
+  const fetchPresets = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/presets');
+      if (res.data && Array.isArray(res.data) && res.data.length > 0) {
+        setPresets(res.data);
+      } else {
+        setPresets(defaultPresets);
+      }
+    } catch (err) {
+      console.error('Failed to fetch presets:', err);
+      setPresets(defaultPresets);
+      // Only show error toast if it's not a simple 401 (which is handled by global auth)
+      toast({
+        title: "Database Sync",
+        description: "Could not fetch custom presets. Showing industry standards.",
+        variant: "default"
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [toast, defaultPresets]);
 
   useEffect(() => {
-    async function fetchPresets() {
-      try {
-        const data = await getPresets();
-        setPresets(data as unknown as Preset[]);
-      } catch (error: any) {
-        console.error('Failed to fetch presets:', error);
-        toast.error('Failed to load presets');
-      } finally {
-        setIsLoading(false);
-      }
-    }
     fetchPresets();
-  }, []);
-
-  const handleSave = async (data: { name: string; settings: PresetSettings }) => {
-    // In a real implementation, we would call an API to save/update in Supabase
-    // For now, we update local state to reflect successful "simulated" save
-    if (editingPreset) {
-      setPresets(prev => prev.map(p =>
-        p.id === editingPreset.id ? { ...p, ...data, lastModified: 'just now' } : p
-      ));
-      toast.success('Preset updated successfully');
-    } else {
-      const newPreset: Preset = {
-        id: String(Date.now()),
-        appliedRepos: 0,
-        lastModified: 'just now',
-        ...data,
-      };
-      setPresets(prev => [newPreset, ...prev]);
-      toast.success('Preset created successfully');
-    }
-    setShowForm(false);
-    setEditingPreset(undefined);
-  };
-
-  const handleEdit = (preset: Preset) => {
-    setEditingPreset(preset);
-    setShowForm(true);
-  };
-
-  const handleDelete = (id: string) => {
-    if (confirm('Are you sure you want to delete this preset?')) {
-      setPresets(prev => prev.filter(p => p.id !== id));
-      toast.success('Preset deleted');
-    }
-  };
-
-  const handleCancel = () => {
-    setShowForm(false);
-    setEditingPreset(undefined);
-  };
+  }, [fetchPresets]);
 
   return (
-    <DashboardShell>
-      <div className="min-h-screen bg-[#fafafa]">
-        {/* Header */}
-        <div className="bg-white border-b border-[#e5e7eb] px-8 py-6 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-[#0a0a0a]">Org Presets</h1>
-            <p className="text-sm text-[#6b7280] mt-1">Define standards once, apply across all repositories</p>
+    <div className="space-y-8">
+      <motion.div 
+        initial={{ opacity: 0, x: -20 }}
+        animate={{ opacity: 1, x: 0 }}
+        className="flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+      >
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Configuration Presets</h1>
+          <p className="text-muted-foreground font-medium">Standardized configurations to apply across your repositories.</p>
+        </div>
+        <Button className="rounded-full h-11 px-6 shadow-lg shadow-primary/20">
+          <Plus className="w-5 h-5 mr-2" />
+          Create Custom Preset
+        </Button>
+      </motion.div>
+
+      <Card className="rounded-[2rem] border-none bg-card shadow-xl shadow-black/5 overflow-hidden">
+        <div className="p-6 border-b border-border/50 bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input 
+              placeholder="Search presets..." 
+              className="pl-10 h-11 rounded-full border-transparent bg-background shadow-inner focus:ring-2 ring-primary/20 transition-all"
+            />
           </div>
-          <Button
-            onClick={() => { setEditingPreset(undefined); setShowForm(true); }}
-            className="inline-flex items-center gap-2"
-          >
-            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-            New preset
-          </Button>
         </div>
 
-        <div className="p-8 space-y-4">
-          {/* Presets list */}
-          {isLoading ? (
-            <Card className="p-12 text-center text-[#6b7280] animate-pulse">
-              Loading presets...
-            </Card>
-          ) : presets.length === 0 && !showForm ? (
-            <Card className="p-12 text-center bg-white border-dashed border-2">
-              <div className="w-12 h-12 bg-[#f3f4f6] rounded-xl flex items-center justify-center mx-auto mb-4">
-                <svg width="20" height="20" fill="none" stroke="#9ca3af" strokeWidth="2" viewBox="0 0 24 24">
-                  <line x1="4" y1="6" x2="20" y2="6" />
-                  <line x1="8" y1="12" x2="20" y2="12" />
-                  <line x1="12" y1="18" x2="20" y2="18" />
-                </svg>
-              </div>
-              <h3 className="font-semibold text-[#0a0a0a] mb-1">No presets yet</h3>
-              <p className="text-sm text-[#6b7280] mb-6">Create your first org preset to standardize repository configurations.</p>
-              <Button onClick={() => setShowForm(true)}>
-                Create preset
-              </Button>
-            </Card>
+        <div className="p-8">
+          {loading ? (
+            <div className="py-24 flex flex-col items-center justify-center space-y-4">
+              <Loader2 className="w-10 h-10 animate-spin text-primary opacity-20" />
+              <p className="text-muted-foreground text-sm font-medium">Syncing with Supabase...</p>
+            </div>
           ) : (
-            <div className="grid grid-cols-1 gap-3">
-              {presets.map(preset => (
-                <Card key={preset.id} className="p-5 hover:border-[#d1d5db] transition-colors">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-lg bg-[#eff6ff] flex items-center justify-center shrink-0 border border-[#dbeafe]">
-                        <svg width="18" height="18" fill="none" stroke="#0070f3" strokeWidth="2" viewBox="0 0 24 24">
-                          <line x1="4" y1="6" x2="20" y2="6" />
-                          <circle cx="4" cy="12" r="2" />
-                          <line x1="8" y1="12" x2="20" y2="12" />
-                          <circle cx="8" cy="18" r="2" />
-                          <line x1="12" y1="18" x2="20" y2="18" />
-                        </svg>
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-[#0a0a0a] leading-tight">{preset.name}</h3>
-                        <div className="flex items-center gap-3 mt-1.5">
-                          <span className="text-xs text-[#6b7280]">
-                            Applied to {preset.appliedRepos} {preset.appliedRepos === 1 ? 'repo' : 'repos'}
-                          </span>
-                          <span className="text-[#e5e7eb] text-xs">·</span>
-                          <span className="text-xs text-[#9ca3af]">Modified {preset.lastModified}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="ghost"
-                        onClick={() => handleEdit(preset)}
-                        className="h-8 px-3 text-xs"
-                      >
-                        Edit
-                      </Button>
-                      <Button variant="secondary" className="h-8 px-3 text-xs">
-                        Apply
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        onClick={() => handleDelete(preset.id)}
-                        className="h-8 px-3 text-xs text-[#ef4444] hover:text-[#dc2626] hover:bg-[#fee2e2]"
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Stack tags */}
-                  {preset.settings?.stacks?.length > 0 && (
-                    <div className="flex items-center gap-2 mt-4 pt-4 border-t border-[#f3f4f6]">
-                      <span className="text-[10px] font-medium text-[#9ca3af] uppercase tracking-wider">Targets:</span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {preset.settings.stacks.map(s => (
-                          <Badge key={s} variant="info" className="text-[10px] h-5 px-2 bg-[#f3f4f6] text-[#374151] border-none">
-                            {s}
-                          </Badge>
-                        ))}
-                      </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {presets.map((preset, i) => (
+                <motion.div
+                  key={preset.id || i}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.1 }}
+                  whileHover={{ y: -5 }}
+                  className="p-8 rounded-[2rem] border border-border/50 bg-background hover:shadow-2xl hover:border-primary/30 transition-all duration-300 group relative overflow-hidden"
+                >
+                  {preset.active && (
+                    <div className="absolute top-0 right-0 p-6">
+                      <Badge className="bg-emerald-500 text-white border-none rounded-full px-4 py-1 font-bold text-[10px] uppercase tracking-wider">Active</Badge>
                     </div>
                   )}
-                </Card>
+                  
+                  <div className="w-14 h-14 rounded-2xl bg-primary/5 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-primary/10 transition-all">
+                    <Layers className="w-7 h-7 text-primary" />
+                  </div>
+                  
+                  <h3 className="text-2xl font-bold mb-3 group-hover:text-primary transition-colors">{preset.name}</h3>
+                  <p className="text-muted-foreground leading-relaxed mb-8 line-clamp-2">{preset.description}</p>
+                  
+                  <div className="flex flex-wrap gap-2 mb-8">
+                    {preset.tags?.map(tag => (
+                      <Badge key={tag} variant="secondary" className="rounded-full text-[10px] font-black px-4 py-1 bg-muted/50">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                  
+                  <div className="flex items-center gap-4 pt-8 border-t border-border/50">
+                    <Button className="rounded-full h-11 px-8 flex-1 font-bold">
+                      Apply Preset
+                    </Button>
+                    <Button variant="outline" className="rounded-full h-11 px-8 flex-1 font-bold">
+                      Details
+                    </Button>
+                  </div>
+                </motion.div>
               ))}
-            </div>
-          )}
 
-          {showForm && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0a0a0a]/20 backdrop-blur-sm animate-in fade-in duration-200">
-              <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl overflow-hidden animate-in zoom-in-95 duration-200">
-                <div className="p-1 px-[1px]">
-                   <PresetForm
-                    preset={editingPreset}
-                    onSave={handleSave}
-                    onCancel={handleCancel}
-                  />
+              {/* AI Suggestion Card */}
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.5 }}
+                className="p-8 rounded-[2rem] border-2 border-dashed border-primary/20 bg-primary/5 flex flex-col items-center justify-center text-center group hover:bg-primary/10 transition-all"
+              >
+                <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                  <Sparkles className="w-8 h-8 text-primary animate-pulse" />
                 </div>
-              </div>
+                <h3 className="text-2xl font-bold mb-3">AI-Generated Preset</h3>
+                <p className="text-muted-foreground max-w-[280px] mb-8 font-medium">
+                  Let RepoForge analyze your org and suggest a custom preset for your team.
+                </p>
+                <Button variant="outline" className="rounded-full border-primary/20 text-primary hover:bg-primary hover:text-white h-11 px-10 font-bold transition-all shadow-lg shadow-primary/5">
+                  Run AI Analysis
+                </Button>
+              </motion.div>
             </div>
           )}
         </div>
-      </div>
-    </DashboardShell>
+      </Card>
+    </div>
   );
 }

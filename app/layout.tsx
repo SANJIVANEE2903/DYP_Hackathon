@@ -3,27 +3,24 @@ import { Inter } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 import 'lenis/dist/lenis.css'
-import SupabaseProvider from '@/components/providers/supabase-provider'
+import { AuthProvider } from '@/hooks/use-auth'
+import { ThemeProvider } from '@/components/providers/theme-provider'
 import { LenisProvider } from '@/components/providers/lenis-provider'
+import SupabaseProvider from '@/components/providers/supabase-provider'
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'RepoForge - Repository Configuration Made Easy',
-  description: 'Automatically configure GitHub repositories with AI-powered setup. CI/CD, branch protection, templates, and health auditing.',
-  generator: 'v0.app',
+  title: 'RepoForge - Premium Developer Tool',
+  description: 'AI-powered repository health auditing and automated configuration.',
+  generator: 'RepoForge',
   icons: {
-    icon: [
-      {
-        url: '/icon.svg',
-        type: 'image/svg+xml',
-      },
-    ],
+    icon: [{ url: '/icon.svg', type: 'image/svg+xml' }],
   },
 }
 
 export const viewport: Viewport = {
-  themeColor: '#0070f3',
+  themeColor: '#000000',
   width: 'device-width',
   initialScale: 1,
 }
@@ -34,13 +31,17 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className="bg-[#ffffff]">
-      <body className={`${inter.className} font-sans antialiased bg-[#ffffff] text-[#0a0a0a]`}>
-        <LenisProvider>
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${inter.className} font-sans antialiased bg-background text-foreground`}>
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <SupabaseProvider>
-            {children}
+            <LenisProvider>
+              <AuthProvider>
+                {children}
+              </AuthProvider>
+            </LenisProvider>
           </SupabaseProvider>
-        </LenisProvider>
+        </ThemeProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>

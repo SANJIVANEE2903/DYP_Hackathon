@@ -16,10 +16,11 @@ import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/button';
 import { AuthForm } from '@/components/AuthForm';
 
-export default function LoginPage() {
+export default function SignupPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const { user, signIn, signUp, loading, loginGuest } = useAuth();
+  const [success, setSuccess] = useState('');
+  const { user, signUp, loading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -28,13 +29,15 @@ export default function LoginPage() {
     }
   }, [user, router]);
 
-  const handleSignIn = async (data: any) => {
+  const handleSignUp = async (data: any) => {
     setError('');
+    setSuccess('');
     setIsSubmitting(true);
     try {
-      await signIn(data.email, data.password);
+      await signUp(data.email, data.password, data.fullName);
+      setSuccess('Account created! Please check your email to verify.');
     } catch (err: any) {
-      setError(err.message || 'Authentication failed.');
+      setError(err.message || 'Signup failed.');
     } finally {
       setIsSubmitting(false);
     }
@@ -77,10 +80,10 @@ export default function LoginPage() {
             <span className="text-white font-bold text-xl tracking-tight">RepoForge</span>
           </div>
           <h1 className="text-5xl font-black text-white leading-tight mb-6">
-            Forge the future of <span className="text-primary">repository intelligence</span>.
+            Join the future of <span className="text-primary">repository intelligence</span>.
           </h1>
           <p className="text-zinc-400 text-lg mb-12">
-            The all-in-one platform for auditing, automating, and elevating your GitHub repositories.
+            Create an account to start auditing and automating your GitHub workflows today.
           </p>
           <div className="space-y-6">
             {[
@@ -105,33 +108,23 @@ export default function LoginPage() {
         
         <div className="w-full max-w-[420px] relative z-10">
           <div className="text-center mb-10">
-            <h2 className="text-3xl font-bold tracking-tight mb-2">Welcome back</h2>
-            <p className="text-muted-foreground">Log in to your RepoForge account</p>
+            <h2 className="text-3xl font-bold tracking-tight mb-2">Create an account</h2>
+            <p className="text-muted-foreground">Start your 14-day free trial today</p>
           </div>
 
           <div className="rounded-3xl bg-card border border-border p-8 shadow-2xl shadow-black/5">
             <AuthForm 
-              type="login" 
-              onSubmit={handleSignIn} 
+              type="signup" 
+              onSubmit={handleSignUp} 
               isSubmitting={isSubmitting} 
               error={error} 
+              success={success}
             />
-
-            <div className="pt-4">
-              <Button 
-                onClick={() => loginGuest()} 
-                variant="ghost" 
-                className="w-full h-12 rounded-xl text-primary font-bold text-xs hover:bg-primary/5 flex items-center justify-center gap-2"
-              >
-                <Zap className="w-4 h-4" />
-                Bypass Login (Dev Mode)
-              </Button>
-            </div>
           </div>
 
           <p className="text-center text-sm text-muted-foreground mt-8">
-            Don&apos;t have an account?{' '}
-            <Link href="/signup" className="text-primary font-bold hover:underline">Create one</Link>
+            Already have an account?{' '}
+            <Link href="/login" className="text-primary font-bold hover:underline">Sign In</Link>
           </p>
         </div>
       </div>

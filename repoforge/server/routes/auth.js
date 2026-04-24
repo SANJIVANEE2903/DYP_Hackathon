@@ -12,18 +12,20 @@ const JWT_SECRET = new TextEncoder().encode(
 );
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 
-// State management for CSRF protection (10 minute TTL)
+// State management for CSRF and account linking (10 minute TTL)
 const authStates = new Map();
 
 /**
  * GET /api/auth/github
  * Initiates the GitHub OAuth handshake
+ * Can accept ?userId=... to link to an existing email account
  */
 router.get('/github', (req, res) => {
   const state = crypto.randomBytes(16).toString('hex');
+  const userId = req.query.userId;
   
-  // Store state with 10 minute expiry
-  authStates.set(state, true);
+  // Store state and optional userId for linking
+  authStates.set(state, { userId, timestamp: Date.now() });
   setTimeout(() => authStates.delete(state), 10 * 60 * 1000);
 
   const scope = 'repo,read:org,workflow,admin:repo_hook';
@@ -34,16 +36,21 @@ router.get('/github', (req, res) => {
 
 /**
  * GET /api/auth/callback
- * Handles GitHub OAuth callback, exchanges code for token, and creates user session
+ * Handles GitHub OAuth callback
  */
 router.get('/callback', async (req, res) => {
-  const { code, state } = req.query;
+  const { code, state: stateKey } = req.query;
 
-  // 1. Verify CSRF state
-  if (!state || !authStates.has(state)) {
-    return res.status(400).json({ error: 'Invalid state (CSRF Protection)' });
+  // 1. Verify state
+  console.log('GitHub Callback Received:', { stateKey, code: code ? 'PRESENT' : 'MISSING' });
+  const stateData = authStates.get(stateKey);
+  
+  if (!stateKey || !stateData) {
+    console.warn('OAuth State Mismatch or Expired:', { received: stateKey, available: Array.from(authStates.keys()) });
+    return res.status(400).json({ error: 'Invalid or expired state' });
   }
-  authStates.delete(state);
+  authStates.delete(stateKey);
+  console.log('State Verified for user:', stateData.userId || 'NEW_USER');
 
   try {
     // 2. Exchange code for access token
@@ -77,28 +84,30 @@ router.get('/callback', async (req, res) => {
 
     const userData = await userResponse.json();
 
-    // 4. Upsert user in the database
-    const user = db.users.upsert({
+    // 4. Upsert user - Link to existing userId if provided
+    const user = await db.users.upsert({
+      id: stateData.userId, // If present, we link/update this user
       githubId: userData.id,
       login: userData.login,
       name: userData.name,
       avatarUrl: userData.avatar_url,
       email: userData.email,
       accessToken: accessToken,
+      github_connected: true
     });
 
-    // 5. Create JWT
+    // 5. Create JWT (Note: We use our own JWT for API calls, 
+    // but the client will also have the Supabase session)
     const jwt = await new jose.SignJWT({
       userId: user.id,
       githubLogin: user.login,
-      plan: user.plan,
     })
       .setProtectedHeader({ alg: 'HS256' })
       .setIssuedAt()
       .setExpirationTime('7d')
       .sign(JWT_SECRET);
 
-    // 6. Redirect to frontend with token
+    // 6. Redirect to frontend
     res.redirect(`${FRONTEND_URL}/dashboard?token=${jwt}`);
   } catch (error) {
     console.error('OAuth Callback Error:', error);
@@ -108,25 +117,30 @@ router.get('/callback', async (req, res) => {
 
 /**
  * GET /api/auth/me
- * Returns the currently authenticated user
+ * Returns the currently authenticated user from our database
  */
-router.get('/me', requireAuth, (req, res) => {
-  const user = db.users.findById(req.user.userId);
-  if (!user) {
-    return res.status(404).json({ error: 'User not found' });
+router.get('/me', requireAuth, async (req, res) => {
+  try {
+    // requireAuth already verified the Supabase token and set req.user.userId
+    const user = await db.users.findById(req.user.userId);
+    
+    if (!user) {
+      // If user exists in Supabase but not in our table yet, create them
+      // This happens right after Email Signup but before GitHub Connect
+      const newUser = await db.users.upsert({
+        id: req.user.userId,
+        email: req.user.email,
+        github_connected: false
+      });
+      return res.json(newUser);
+    }
+
+    // Hide sensitive fields
+    const { access_token, ...safeUser } = user;
+    res.json(safeUser);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  // Remove sensitive token before sending
-  const { access_token, ...safeUser } = user;
-  res.json(safeUser);
-});
-
-/**
- * POST /api/auth/logout
- * Stateless logout (client handles token deletion)
- */
-router.post('/logout', (req, res) => {
-  res.json({ success: true });
 });
 
 module.exports = router;

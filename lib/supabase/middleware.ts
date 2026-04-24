@@ -26,7 +26,26 @@ export async function updateSession(request: NextRequest) {
   )
 
   // Refresh session
-  await supabase.auth.getUser()
+  const { data: { user } } = await supabase.auth.getUser()
+  const isGuest = request.cookies.get('repoforge_guest')?.value === 'true'
+
+  const url = request.nextUrl.clone()
+
+  // Protect /dashboard and /settings routes
+  if (url.pathname.startsWith('/dashboard') || url.pathname.startsWith('/settings')) {
+    if (!user && !isGuest) {
+      url.pathname = '/login'
+      return NextResponse.redirect(url)
+    }
+  }
+
+  // Redirect logged in users away from /login and /signup
+  if (url.pathname === '/login' || url.pathname === '/signup') {
+    if (user || isGuest) {
+      url.pathname = '/dashboard'
+      return NextResponse.redirect(url)
+    }
+  }
 
   return supabaseResponse
 }

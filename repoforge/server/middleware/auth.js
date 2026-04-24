@@ -23,16 +23,17 @@ async function requireAuth(req, res, next) {
       return res.status(401).json({ error: 'Invalid token' })
     }
 
-    // Get GitHub access token from user metadata
-    // Supabase stores provider tokens in metadata if configured
+    // Get full user data from our database
+    const db = require('../db/database')
+    const dbUser = await db.users.findById(user.id)
+
     req.user = {
       userId: user.id,
-      githubLogin: user.user_metadata?.user_name || user.user_metadata?.preferred_username,
-      githubAccessToken: req.headers['x-github-token'] || 
-                         user.user_metadata?.provider_token || 
-                         user.app_metadata?.provider_token,
+      githubLogin: dbUser?.login || user.user_metadata?.user_name,
+      githubAccessToken: dbUser?.access_token || user.user_metadata?.provider_token,
       email: user.email,
-      avatarUrl: user.user_metadata?.avatar_url
+      avatarUrl: dbUser?.avatar_url || user.user_metadata?.avatar_url,
+      githubConnected: dbUser?.github_connected || false
     }
 
     next()

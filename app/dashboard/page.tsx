@@ -1,236 +1,434 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import Link from 'next/link';
-import { DashboardShell } from '@/components/layout/dashboard-shell';
-import { getRepos, getDashboardStats } from '@/lib/supabase/api';
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  Database, 
+  Activity, 
+  Zap, 
+  Layers, 
+  Search,
+  RefreshCw,
+  Github,
+  ChevronRight,
+  Plus,
+  Loader2,
+  ShieldCheck,
+  TrendingUp,
+  AlertCircle,
+  LayoutDashboard
+} from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Repository } from '@/types';
-import { toast } from 'sonner';
+import { useToast } from '@/components/ui/use-toast';
+import Link from 'next/link';
+import { 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer,
+  Cell,
+  PieChart,
+  Pie
+} from 'recharts';
+import api from '@/lib/api';
+import { format } from 'date-fns';
 
-export default function DashboardOverview() {
+interface Stats {
+  totalRepos: number;
+  avgScore: number;
+  activeCIRuns: number;
+  presets: number;
+}
+
+interface Repository {
+  id: string;
+  name: string;
+  full_name: string;
+  stack: string;
+  health_score: number | null;
+  updated_at: string;
+}
+
+export default function DashboardHomepage() {
+  const [stats, setStats] = useState<Stats | null>(null);
   const [repos, setRepos] = useState<Repository[]>([]);
-  const [stats, setStats] = useState({ totalRepos: 0, criticalIssues: 0, healthyRepos: 0, scannedToday: 0 });
-  const [isLoading, setIsLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [repoUrl, setRepoUrl] = useState('');
+  const [connecting, setConnecting] = useState(false);
+  const { toast } = useToast();
+
+  const fetchData = async () => {
+    try {
+      // Use individual handlers to prevent one failure from blocking everything
+      const statsPromise = api.get('/dashboard/stats')
+        .then(res => res.data)
+        .catch(err => {
+          console.error('Stats fetch error:', err);
+          return null;
+        });
+      
+      const reposPromise = api.get('/repos')
+        .then(res => res.data)
+        .catch(err => {
+          console.error('Repos fetch error:', err);
+          return [];
+        });
+
+      const [statsData, reposData] = await Promise.all([statsPromise, reposPromise]);
+      
+      if (statsData) setStats(statsData);
+      setRepos(reposData || []);
+    } catch (err) {
+      console.error('Failed to fetch dashboard data:', err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
 
   useEffect(() => {
-    async function fetchData() {
-      try {
-        const [reposData, statsData] = await Promise.all([
-          getRepos(),
-          getDashboardStats().catch(() => null)
-        ]);
-        
-        setRepos(reposData as unknown as Repository[]);
-        if (statsData) {
-          setStats(statsData);
-        } else {
-          setStats({
-            totalRepos: reposData.length,
-            criticalIssues: 0,
-            healthyRepos: 0,
-            scannedToday: 0,
-          });
-        }
-      } catch (error: any) {
-        console.error('Failed to fetch dashboard data:', error);
-        toast.error('Failed to load dashboard data');
-      } finally {
-        setIsLoading(false);
-      }
-    }
     fetchData();
   }, []);
 
-  const avgScore = repos.length > 0 
-    ? Math.round(repos.reduce((sum, r) => sum + r.score, 0) / repos.length)
-    : 0;
+  const handleConnect = async (e: React.FormEvent) => {
+    e.preventDefault();
+    let cleanRepoName = repoUrl.trim();
+    
+    // Simple GitHub URL parsing
+    if (cleanRepoName.includes('github.com/')) {
+      const parts = cleanRepoName.split('github.com/')[1].split('/');
+      if (parts.length >= 2) {
+        cleanRepoName = `${parts[0]}/${parts[1]}`;
+      }
+    }
 
-  const getProgressColor = (score: number) => {
-    if (score >= 80) return 'bg-[#10b981]';
-    if (score >= 60) return 'bg-[#f59e0b]';
-    return 'bg-[#ef4444]';
+    if (!cleanRepoName.includes('/')) {
+      toast({
+        title: "Invalid Format",
+        description: "Please enter 'owner/repo' or a full GitHub URL.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setConnecting(true);
+    try {
+      await api.post('/repos/connect', { repoFullName: cleanRepoName });
+      toast({
+        title: "Successfully Connected!",
+        description: `${cleanRepoName} is now linked to RepoForge.`,
+      });
+      setRepoUrl('');
+      fetchData();
+    } catch (err: any) {
+      toast({
+        title: "Connection Failed",
+        description: err.response?.data?.error || "Could not link repository.",
+        variant: "destructive"
+      });
+    } finally {
+      setConnecting(false);
+    }
   };
 
-  return (
-    <DashboardShell>
-      <div className="min-h-screen bg-[#fafafa]">
-        {/* Header */}
-        <div className="bg-white border-b border-[#e5e7eb] px-4 sm:px-8 py-4 sm:py-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold text-[#0a0a0a]">Overview</h1>
-            <p className="text-sm text-[#6b7280] mt-0.5">Manage your engineering standards across repositories.</p>
-          </div>
-          <div className="text-left sm:text-right">
-            <p className="text-sm font-medium text-[#0a0a0a]">
-              {new Date().toLocaleDateString('en-US', { weekday: 'long' })}
-            </p>
-            <p className="text-xs text-[#6b7280]">
-              {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-            </p>
-          </div>
-        </div>
+  const distributionData = [
+    { name: 'Healthy', value: repos.filter(r => (r.health_score || 0) >= 80).length, color: '#10b981' },
+    { name: 'Warning', value: repos.filter(r => (r.health_score || 0) >= 60 && (r.health_score || 0) < 80).length, color: '#f59e0b' },
+    { name: 'Critical', value: repos.filter(r => (r.health_score || 0) < 60).length, color: '#ef4444' },
+  ];
 
-        <div className="p-4 sm:p-8 space-y-6 sm:space-y-8">
-          {/* Stats grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {[
-              { label: 'Total repos', value: stats.totalRepos, variant: 'default' },
-              { label: 'Avg health score', value: `${avgScore}/100`, variant: avgScore > 80 ? 'success' : 'default' },
-              { label: 'Active CI runs', value: 0, variant: 'default' },
-              { label: 'Presets applied', value: 0, variant: 'default' },
-            ].map((stat) => (
-              <Card key={stat.label} className="p-5">
-                <p className="text-2xl font-semibold text-[#0a0a0a] mb-1">{isLoading ? '...' : stat.value}</p>
-                <p className="text-sm text-[#6b7280] mb-1">{stat.label}</p>
-              </Card>
+  const chartData = repos.slice(0, 5).map(r => ({
+    name: r.name,
+    score: r.health_score || 0
+  }));
+
+  if (loading) {
+    return (
+      <div className="p-8 space-y-8 animate-pulse">
+        <div className="h-10 w-48 bg-muted rounded-lg" />
+        <div className="h-64 bg-muted rounded-3xl" />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[1, 2, 3, 4].map(i => <div key={i} className="h-32 bg-muted rounded-2xl" />)}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-10">
+      {/* Hero Section */}
+      <section className="relative overflow-hidden rounded-[2.5rem] bg-gradient-to-br from-indigo-600 via-violet-600 to-purple-700 p-8 md:p-12 shadow-2xl shadow-indigo-500/20">
+        <div className="relative z-10 max-w-2xl">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            <Badge className="mb-4 bg-white/20 text-white hover:bg-white/30 border-none px-4 py-1 rounded-full backdrop-blur-md">
+              <Zap className="w-3 h-3 mr-2 fill-white" />
+              Analyze Faster
+            </Badge>
+            <h1 className="text-4xl md:text-5xl font-black text-white leading-tight mb-4">
+              Forge better codebases <br />
+              <span className="text-indigo-200">with AI intelligence.</span>
+            </h1>
+            <p className="text-indigo-100 text-lg mb-8 opacity-90">
+              Paste a GitHub link below to instantly scan for security vulnerabilities, 
+              best practices, and engineering standards.
+            </p>
+            
+            <form onSubmit={handleConnect} className="flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-1">
+                <Github className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-indigo-300" />
+                <Input 
+                  placeholder="https://github.com/owner/repo"
+                  value={repoUrl}
+                  onChange={(e) => setRepoUrl(e.target.value)}
+                  className="h-14 pl-12 pr-4 rounded-2xl bg-white/10 border-white/20 text-white placeholder:text-indigo-200 focus:bg-white/20 transition-all text-lg shadow-inner"
+                />
+              </div>
+              <Button 
+                type="submit" 
+                disabled={connecting || !repoUrl}
+                className="h-14 px-8 rounded-2xl bg-white text-indigo-600 hover:bg-indigo-50 font-bold text-lg shadow-xl shadow-black/10 transition-transform active:scale-95"
+              >
+                {connecting ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Connect Repo'}
+              </Button>
+            </form>
+          </motion.div>
+        </div>
+        
+        {/* Abstract Background Shapes */}
+        <div className="absolute top-0 right-0 -mr-20 -mt-20 w-96 h-96 bg-white/10 rounded-full blur-3xl" />
+        <div className="absolute bottom-0 right-0 mr-20 -mb-20 w-64 h-64 bg-indigo-400/20 rounded-full blur-3xl" />
+      </section>
+
+      {/* Stats Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <Card className="rounded-3xl border-none bg-card shadow-lg shadow-black/5 p-6 hover:shadow-xl transition-all duration-300 group">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <Database className="w-6 h-6 text-indigo-500" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Total Repos</p>
+              <h3 className="text-2xl font-bold">{stats?.totalRepos || 0}</h3>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="rounded-3xl border-none bg-card shadow-lg shadow-black/5 p-6 hover:shadow-xl transition-all duration-300 group">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <ShieldCheck className="w-6 h-6 text-emerald-500" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Avg. Health</p>
+              <h3 className="text-2xl font-bold">{stats?.avgScore || 0}%</h3>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="rounded-3xl border-none bg-card shadow-lg shadow-black/5 p-6 hover:shadow-xl transition-all duration-300 group">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <TrendingUp className="w-6 h-6 text-amber-500" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Active Runs</p>
+              <h3 className="text-2xl font-bold">{stats?.activeCIRuns || 0}</h3>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="rounded-3xl border-none bg-card shadow-lg shadow-black/5 p-6 hover:shadow-xl transition-all duration-300 group">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-violet-500/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <Layers className="w-6 h-6 text-violet-500" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Audit History</p>
+              <h3 className="text-2xl font-bold">{repos.length} logs</h3>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Chart Section */}
+        <Card className="lg:col-span-2 rounded-[2rem] border-none bg-card shadow-lg shadow-black/5 p-8">
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <CardTitle className="text-2xl font-bold">Health Distribution</CardTitle>
+              <CardDescription>Visual breakdown of repository standards</CardDescription>
+            </div>
+            <Button variant="outline" size="sm" className="rounded-full h-9 px-4 font-bold text-xs">
+              Last 30 Days
+            </Button>
+          </div>
+          
+          <div className="h-[300px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'currentColor', opacity: 0.5 }} dy={10} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'currentColor', opacity: 0.5 }} />
+                <Tooltip 
+                  cursor={{ fill: 'rgba(255,255,255,0.05)' }}
+                  contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.1)', background: 'hsl(var(--card))' }}
+                />
+                <Bar dataKey="score" radius={[8, 8, 0, 0]} barSize={40}>
+                  {chartData.map((entry, index) => (
+                    <Cell 
+                      key={`cell-${index}`} 
+                      fill={entry.score >= 80 ? '#10b981' : entry.score >= 60 ? '#f59e0b' : '#ef4444'} 
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+
+        {/* Circular Distribution */}
+        <Card className="rounded-[2rem] border-none bg-card shadow-lg shadow-black/5 p-8">
+          <CardTitle className="text-2xl font-bold mb-2">Overall Status</CardTitle>
+          <CardDescription className="mb-8">Health categories across all projects</CardDescription>
+          
+          <div className="h-[200px] relative">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={distributionData}
+                  innerRadius={60}
+                  outerRadius={80}
+                  paddingAngle={5}
+                  dataKey="value"
+                >
+                  {distributionData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-3xl font-black">{stats?.avgScore || 0}%</span>
+              <span className="text-[10px] font-bold text-muted-foreground uppercase">Average</span>
+            </div>
+          </div>
+
+          <div className="space-y-3 mt-6">
+            {distributionData.map((item) => (
+              <div key={item.name} className="flex items-center justify-between p-3 rounded-2xl bg-secondary/30">
+                <div className="flex items-center gap-3">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
+                  <span className="text-sm font-semibold">{item.name}</span>
+                </div>
+                <span className="text-sm font-bold">{item.value} Repos</span>
+              </div>
             ))}
           </div>
+        </Card>
+      </div>
 
-          {/* Recent repos section */}
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-[#0a0a0a]">Recent repositories</h2>
-              {repos.length > 0 && (
-                <Link href="/dashboard/repos" className="text-sm text-[#0070f3] hover:text-[#0060df] font-medium">
-                  View all repos →
-                </Link>
-              )}
-            </div>
+      {/* Recent Repositories */}
+      <section className="space-y-6">
+        <div className="flex items-center justify-between px-2">
+          <h2 className="text-2xl font-bold flex items-center gap-3">
+            <Activity className="w-6 h-6 text-indigo-500" />
+            Recent Activity
+          </h2>
+          <Button asChild variant="ghost" className="font-bold text-indigo-500 hover:text-indigo-600">
+            <Link href="/dashboard/repos">
+              View all repos <ChevronRight className="w-4 h-4 ml-1" />
+            </Link>
+          </Button>
+        </div>
 
-            <Card className="overflow-hidden p-0">
-              <div className="overflow-x-auto">
-                {isLoading ? (
-                  <div className="p-12 text-center text-[#6b7280] animate-pulse">
-                    Loading repositories...
-                  </div>
-                ) : repos.length > 0 ? (
-                  <table className="w-full min-w-[800px]">
-                    <thead>
-                      <tr className="border-b border-[#e5e7eb] bg-[#fafafa]">
-                        <th className="px-6 py-3 text-left text-xs font-medium text-[#6b7280] uppercase tracking-wider">Repository</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-[#6b7280] uppercase tracking-wider">Stack</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-[#6b7280] uppercase tracking-wider">Health Score</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-[#6b7280] uppercase tracking-wider">Last Updated</th>
-                        <th className="px-6 py-3 text-right text-xs font-medium text-[#6b7280] uppercase tracking-wider">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#f3f4f6]">
-                      {repos.slice(0, 5).map((repo) => (
-                        <tr key={repo.id} className="hover:bg-[#fafafa] transition-colors group">
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded bg-[#f3f4f6] flex items-center justify-center text-[#6b7280]">
-                                <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-                                  <path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/>
-                                </svg>
-                              </div>
-                              <div>
-                                <p className="text-sm font-medium text-[#0a0a0a]">{repo.name}</p>
-                                <p className="text-xs text-[#9ca3af]">{repo.org}</p>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <Badge variant="info" className="font-normal border-none">
-                              {repo.stack}
-                            </Badge>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center gap-3">
-                              <div className="w-24 bg-[#f3f4f6] rounded-full h-1.5">
-                                <div
-                                  className={`h-1.5 rounded-full ${getProgressColor(repo.score)}`}
-                                  style={{ width: `${repo.score}%` }}
-                                />
-                              </div>
-                              <span className={`text-xs font-semibold ${
-                                repo.score >= 80 ? 'text-[#10b981]' :
-                                repo.score >= 60 ? 'text-[#f59e0b]' :
-                                'text-[#ef4444]'
-                              }`}>
-                                {repo.score}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-xs text-[#6b7280]">
-                            {new Date(repo.updatedAt).toLocaleDateString()}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-right">
-                            <Button variant="ghost" className="h-8 px-2 text-xs" asChild>
-                              <Link href={`/dashboard/audit/${repo.id}`}>
-                                View audit
-                              </Link>
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : (
-                  <div className="p-16 text-center">
-                    <div className="w-16 h-16 bg-[#f3f4f6] rounded-full flex items-center justify-center mx-auto mb-4">
-                      <svg width="24" height="24" fill="none" stroke="#9ca3af" strokeWidth="2" viewBox="0 0 24 24">
-                        <path d="M3 3h18v18H3zM3 9h18M9 21V9" />
-                      </svg>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+          {repos.length === 0 ? (
+            <Card className="col-span-full h-60 rounded-[2rem] border-2 border-dashed border-border flex flex-col items-center justify-center text-muted-foreground">
+              <Database className="w-12 h-12 opacity-20 mb-4" />
+              <p className="text-lg font-medium">No repositories tracked yet.</p>
+              <p className="text-sm opacity-60">Connect your first repository to get started.</p>
+            </Card>
+          ) : (
+            repos.slice(0, 3).map((repo) => (
+              <motion.div
+                key={repo.id}
+                whileHover={{ y: -5 }}
+                className="group cursor-pointer"
+              >
+                <Card className="rounded-[2rem] border-none bg-card shadow-lg shadow-black/5 p-6 hover:shadow-2xl transition-all duration-300">
+                  <div className="flex items-start justify-between mb-6">
+                    <div className="w-14 h-14 rounded-2xl bg-secondary flex items-center justify-center">
+                      <Github className="w-7 h-7" />
                     </div>
-                    <h3 className="text-lg font-medium text-[#0a0a0a] mb-1">No repositories found</h3>
-                    <p className="text-sm text-[#6b7280] mb-6">Initialize a repository to start tracking health scores.</p>
-                    <Button asChild>
-                      <Link href="/onboarding">
-                        Create first repo
+                    <Badge variant="secondary" className="rounded-full bg-indigo-500/10 text-indigo-600 border-none font-bold text-[10px] px-3">
+                      {repo.stack || 'NODE'}
+                    </Badge>
+                  </div>
+                  
+                  <h4 className="text-xl font-bold mb-1 truncate group-hover:text-indigo-500 transition-colors">{repo.name}</h4>
+                  <p className="text-sm text-muted-foreground truncate mb-6">{repo.full_name}</p>
+                  
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="font-bold text-muted-foreground uppercase tracking-widest">Health Score</span>
+                      <span className={`font-black text-sm ${
+                        (repo.health_score || 0) >= 80 ? 'text-emerald-500' : 
+                        (repo.health_score || 0) >= 60 ? 'text-amber-500' : 'text-destructive'
+                      }`}>
+                        {repo.health_score || 0}%
+                      </span>
+                    </div>
+                    <div className="w-full h-2 bg-secondary rounded-full overflow-hidden">
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: `${repo.health_score || 0}%` }}
+                        className={`h-full rounded-full ${
+                          (repo.health_score || 0) >= 80 ? 'bg-emerald-500' : 
+                          (repo.health_score || 0) >= 60 ? 'bg-amber-500' : 'bg-destructive'
+                        }`}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-8 pt-6 border-t border-border/50 flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                      Last scan: {repo.updated_at ? format(new Date(repo.updated_at), 'MMM d') : 'Never'}
+                    </span>
+                    <Button asChild size="sm" variant="ghost" className="rounded-full font-bold group-hover:bg-indigo-500 group-hover:text-white transition-all">
+                      <Link href={`/dashboard/audit?repoId=${repo.id}`}>
+                        View Report
+                        <ChevronRight className="w-4 h-4 ml-1" />
                       </Link>
                     </Button>
                   </div>
-                )}
-              </div>
-            </Card>
-          </div>
-
-          {/* Quick actions */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card className="p-6 border-[#bfdbfe] bg-[#eff6ff]">
-              <h3 className="font-semibold text-[#0a0a0a] mb-2 flex items-center gap-2">
-                <svg width="18" height="18" fill="none" stroke="#0070f3" strokeWidth="2" viewBox="0 0 24 24">
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-                Initialize new repo
-              </h3>
-              <p className="text-sm text-[#4b5563] mb-5">Set up a new repository with RepoForge presets, CI/CD, and protection rules.</p>
-              <Button className="w-full shadow-sm" asChild>
-                <Link href="/onboarding">
-                  Create repo
-                </Link>
-              </Button>
-            </Card>
-
-            <Card className="p-6">
-              <h3 className="font-semibold text-[#0a0a0a] mb-2 flex items-center gap-2">
-                <svg width="18" height="18" fill="none" stroke="#0070f3" strokeWidth="2" viewBox="0 0 24 24">
-                  <circle cx="11" cy="11" r="8" />
-                  <path d="m21 21-4.35-4.35" />
-                </svg>
-                Audit existing repo
-              </h3>
-              <p className="text-sm text-[#6b7280] mb-5">Run a health check on any GitHub repository to identify missing configurations.</p>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="owner/repo"
-                  className="flex-1"
-                />
-                <Button variant="secondary" asChild>
-                  <Link href="/dashboard/audit">
-                    Audit
-                  </Link>
-                </Button>
-              </div>
-            </Card>
-          </div>
+                </Card>
+              </motion.div>
+            ))
+          )}
         </div>
-      </div>
-    </DashboardShell>
+      </section>
+
+      {/* Floating Refresh */}
+      <Button 
+        variant="outline" 
+        size="icon" 
+        onClick={() => { setRefreshing(true); fetchData(); }} 
+        className="fixed bottom-8 right-8 rounded-full w-14 h-14 shadow-2xl bg-background/80 backdrop-blur-md border-border/50 hover:bg-primary hover:text-white transition-all z-50"
+      >
+        <RefreshCw className={`w-6 h-6 ${refreshing ? 'animate-spin' : ''}`} />
+      </Button>
+    </div>
   );
 }
+

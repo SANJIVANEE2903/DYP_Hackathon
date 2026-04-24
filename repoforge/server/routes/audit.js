@@ -1,175 +1,149 @@
 const express = require('express')
 const router = express.Router()
 const { requireAuth } = require('../middleware/auth')
-const { createClient } = require('@supabase/supabase-js')
+const db = require('../db/database')
 const { getGitHubService } = require('../services/github')
 const { runAudit } = require('../services/audit')
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-)
-
-// POST /api/audit/run
+/**
+ * POST /api/audit/run
+ * Trigger a health audit for a repository
+ */
 router.post('/run', requireAuth, async (req, res) => {
   try {
     const { repoId } = req.body
     if (!repoId) return res.status(400).json({ error: 'repoId required' })
 
-    // Get repo from DB
-    const { data: repo, error: repoErr } = await supabase
-      .from('repos')
-      .select('*')
-      .eq('id', repoId)
-      .eq('owner_id', req.user.userId)
-      .single()
-
-    if (repoErr || !repo) {
-      return res.status(404).json({ error: 'Repo not found' })
+    const repo = await db.repos.findById(repoId)
+    if (!repo || repo.owner_id !== req.user.userId) {
+      return res.status(404).json({ error: 'Repository not found' })
     }
 
     const accessToken = req.user.githubAccessToken
     const gh = getGitHubService(accessToken)
     const [owner, repoName] = repo.full_name.split('/')
 
-    // Run audit
+    // Run the actual audit logic
     const result = await runAudit(
-      { name: repo.name, fullName: repo.full_name, stack: repo.stack, owner, repo: repoName },
+      { 
+        name: repo.name, 
+        fullName: repo.full_name, 
+        stack: repo.stack, 
+        owner, 
+        repo: repoName 
+      },
       gh
     )
 
-    // Save audit run — store full result in results JSONB
-    const { data: auditRun, error: auditErr } = await supabase
-      .from('audit_runs')
-      .insert({
-        repo_id: repoId,
-        score: result.score,
-        status: 'completed',
-        results: result  // store entire rich result object
-      })
-      .select()
-      .single()
+    // Save audit results to Supabase
+    const auditRun = await db.auditRuns.create({
+      repoId,
+      userId: req.user.userId,
+      score: result.score,
+      issues: result.issues,
+      passedChecks: result.passedChecks,
+      summary: result.summary
+    })
 
-    if (auditErr) throw auditErr
+    // Update the repository's cached health score
+    await db.repos.updateScore(repoId, result.score)
 
-    // Update repo health score (best-effort)
-    try {
-      await supabase
-        .from('repos')
-        .update({ health_score: result.score, last_audit_at: new Date().toISOString() })
-        .eq('id', repoId)
-    } catch (updateErr) {
-      console.warn('Could not update health_score:', updateErr.message)
-    }
-
-    // Return flattened: DB row fields + all rich result fields
     res.json({ ...auditRun, ...result })
   } catch (err) {
-    console.error('POST /audit/run error:', err)
+    console.error('Audit Run Error:', err)
     res.status(500).json({ error: err.message })
   }
 })
 
-// GET /api/audit/:repoId - get latest audit
+/**
+ * GET /api/audit/:repoId
+ * Get the latest audit results for a repo
+ */
 router.get('/:repoId', requireAuth, async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from('audit_runs')
-      .select('*')
-      .eq('repo_id', req.params.repoId)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single()
-
-    if (error) return res.status(404).json({ error: 'No audit found' })
-    res.json(data)
+    const audit = await db.auditRuns.findLatestByRepoId(req.params.repoId)
+    if (!audit) return res.status(404).json({ error: 'No audit history found' })
+    res.json(audit)
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
 })
 
-// GET /api/audit/:repoId/history
+/**
+ * GET /api/audit/:repoId/history
+ */
 router.get('/:repoId/history', requireAuth, async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from('audit_runs')
-      .select('id, score, grade, created_at')
-      .eq('repo_id', req.params.repoId)
-      .order('created_at', { ascending: false })
-      .limit(10)
-
-    if (error) throw error
-    res.json(data || [])
+    const history = await db.auditRuns.findByRepoId(req.params.repoId)
+    res.json(history)
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
 })
 
-// POST /api/audit/fix - one click fix
+/**
+ * POST /api/audit/fix
+ * Apply an automated fix for a specific audit issue
+ */
 router.post('/fix', requireAuth, async (req, res) => {
   try {
     const { repoId, checkId } = req.body
-    
-    const { data: repo } = await supabase
-      .from('repos')
-      .select('*')
-      .eq('id', repoId)
-      .single()
+    const repo = await db.repos.findById(repoId)
+    if (!repo) return res.status(404).json({ error: 'Repo not found' })
 
     const accessToken = req.user.githubAccessToken
     const gh = getGitHubService(accessToken)
     const [owner, repoName] = repo.full_name.split('/')
     const { getTemplate } = require('../services/templates')
 
-    // Map checkId to specific fix
     const fixMap = {
       'no-branch-protection': async () => gh.setBranchProtection(owner, repoName),
       'no-cicd': async () => {
-        const yaml = getTemplate(repo.stack?.toLowerCase().includes('python') ? 'python' : 
-                                  repo.stack?.toLowerCase().includes('go') ? 'go' : 'node')
-        await gh.createOrUpdateFile(owner, repoName, '.github/workflows/ci.yml', yaml, 'ci: add workflow')
+        const templateKey = repo.stack?.toLowerCase().includes('python') ? 'python' : 
+                            repo.stack?.toLowerCase().includes('go') ? 'go' : 'node'
+        const yaml = getTemplate(templateKey)
+        await gh.createOrUpdateFile(owner, repoName, '.github/workflows/ci.yml', yaml, 'ci: add workflow via RepoForge')
       },
       'no-readme': async () => {
         const { generateReadme } = require('../services/ai')
         const content = await generateReadme(repoName, repo.stack || 'generic', [])
-        await gh.createOrUpdateFile(owner, repoName, 'README.md', content, 'docs: generate README')
+        await gh.createOrUpdateFile(owner, repoName, 'README.md', content, 'docs: generate README via RepoForge')
       },
       'no-security': async () => {
-        const content = getTemplate('security').replace('{{REPO_NAME}}', repoName)
-        await gh.createOrUpdateFile(owner, repoName, 'SECURITY.md', content, 'docs: add SECURITY.md')
+        const content = getTemplate('security').replace(/{{REPO_NAME}}/g, repoName)
+        await gh.createOrUpdateFile(owner, repoName, 'SECURITY.md', content, 'docs: add SECURITY.md via RepoForge')
       },
       'no-contributing': async () => {
-        const content = getTemplate('contributing').replace('{{REPO_NAME}}', repoName)
-        await gh.createOrUpdateFile(owner, repoName, 'CONTRIBUTING.md', content, 'docs: add CONTRIBUTING.md')
+        const content = getTemplate('contributing').replace(/{{REPO_NAME}}/g, repoName)
+        await gh.createOrUpdateFile(owner, repoName, 'CONTRIBUTING.md', content, 'docs: add CONTRIBUTING.md via RepoForge')
       },
     }
 
     const fixFn = fixMap[checkId]
-    if (!fixFn) return res.status(400).json({ error: `Unknown check: ${checkId}` })
+    if (!fixFn) return res.status(400).json({ error: `Automation not available for check: ${checkId}` })
 
     await fixFn()
 
-    // Re-run audit after fix
-    const { runAudit } = require('../services/audit')
+    // Re-audit after the fix is applied
     const result = await runAudit(
       { name: repo.name, fullName: repo.full_name, stack: repo.stack, owner, repo: repoName },
       gh
     )
 
-    await supabase.from('audit_runs').insert({
-      repo_id: repoId, user_id: req.user.userId,
-      score: result.score, grade: result.grade,
-      issues: result.issues, passed_checks: result.passedChecks,
+    await db.auditRuns.create({
+      repoId, 
+      userId: req.user.userId,
+      score: result.score, 
+      issues: result.issues, 
+      passedChecks: result.passedChecks,
       summary: result.summary
     })
 
-    await supabase.from('repos')
-      .update({ health_score: result.score })
-      .eq('id', repoId)
+    await db.repos.updateScore(repoId, result.score)
 
     res.json({ success: true, newScore: result.score, result })
   } catch (err) {
-    console.error('POST /audit/fix error:', err)
+    console.error('Audit Fix Error:', err)
     res.status(500).json({ error: err.message })
   }
 })
